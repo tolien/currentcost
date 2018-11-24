@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import time, datetime, calendar
 import types
@@ -12,7 +12,7 @@ periods = [
 #	['7 days', 'hour']
 ]
 
-export = {'power' : []}
+export = {'power' : [], 'unit': {'full_name': 'Watts', 'symbol': 'W'}}
 export_fragment = {
 	'period': {},
 	'data': []
