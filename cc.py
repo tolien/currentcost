@@ -1,61 +1,78 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import datetime, time
 import serial
 from xml.etree import ElementTree as ET
 import pg
+import os
+import datetime
+import time
+import logging
 
-ser = serial.Serial('/dev/ttyUSB1', 57600, timeout=3)
+logging.basicConfig(filename='debug.log', level=logging.DEBUG, format='%(asctime)s: %(message)s')
+ser = serial.Serial('/dev/ttyUSB0', 57600, timeout=3)
 filename = 'data.log'
-#debugfile = 'debug.log'
+rotate_every = 100 * 1024 * 1024
 
 bufsize = 0
-fd = open(filename, "a+", 0)
-#debug_fd = open(debugfile, "w", 0)
+fd = open(filename, "a+", 1)
 
-
-while 1:
-	line = ""
-	c = ser.readline()
-	line = line + c
-	# print str
-	
-	if len(line) > 0:
-#		debug_fd.write(line + '\n')
+logging.debug("Started")
+try:
+	while 1:
+		size = os.path.getsize(filename)
+		if size > rotate_every:
+			logging.debug("*** rotating log file")
+			logging.debug("File size: %d bytes, rotate threshold: %d bytes" % (size, rotate_every))
+			logging.debug("***")
+			fd.flush()
+			os.fsync(fd)
+			fd.close()
+			os.system("sudo -u sswindells python3 store.py")
+			timestamp = datetime.datetime.now()
+			timestamp = time.mktime(timestamp.timetuple())
+			timestamp = str(int(timestamp))
+			os.rename(filename, filename + "." + timestamp)
+			fd = open(filename, "a+", 1)
+		line = ""
+		c = ser.readline()
 		try:
-			element = ET.XML(line)
-			
-			record_time = element.find('time').text
-			time_tokens = record_time.split(':')
-			
-			sensor = element.find('sensor').text
-			sensor = int(sensor)
-			
-			temp = element.find('tmpr').text
-			temp = float(temp)
-			
-			power = element.find('ch1').find('watts').text
-			power = int(power)
-			
-			date = datetime.datetime.today()
-			record_time = date.strftime("%H:%M:%S")
-			# date = date.replace(hour = int(time_tokens[0]), minute = int(time_tokens[1]), second = int(time_tokens[2]))
-			# delta = datetime.datetime.today() - date
-			#if (delta.days * 86400 + delta.seconds) < 0 and date.hour == 0:
-			#	print delta, date
-			#	date = date + datetime.timedelta(days = -1)
-			
-			unixtime = time.mktime(date.timetuple())
-			unixtime = int(unixtime)
-			
-			date = date.strftime("%d/%m/%Y")
-			line = "%s %s, %d, Sensor %d, %f%sC, %dW" % (date, record_time, unixtime, sensor, temp, unichr(176).encode("UTF8"), power)
-			print line
-#			debug_fd.write(line)
-			fd.write(line + '\n')
-			
-			#insert_into_db(date, time, sensor, power)
-		except AttributeError:
-			pass
-		except KeyboardInterrupt:
-			print "Terminated."
-		except ET.ParseError:
-		    print line
+			c = c.decode('UTF-8')
+			line = line + c
+		except UnicodeDecodeError:
+		    logging.debug("Unable to decode line %s" % c)
+		if len(line) > 0:
+			try:
+				element = ET.XML(line)
+				
+				record_time = element.find('time').text
+				time_tokens = record_time.split(':')
+				
+				sensor = element.find('sensor').text
+				sensor = int(sensor)
+				
+				temp = element.find('tmpr').text
+				temp = float(temp)
+				
+				power = element.find('ch1').find('watts').text
+				power = int(power)
+				
+				date = datetime.datetime.today()
+				record_time = date.strftime("%H:%M:%S")
+				
+				unixtime = time.mktime(date.timetuple())
+				unixtime = int(unixtime)
+				
+				date = date.strftime("%d/%m/%Y")
+				line = "%s %s, %d, Sensor %d, %f%sC, %dW" % (date, record_time, unixtime, sensor, temp, chr(176), power)
+				print(line)
+				fd.write(line + '\n')
+				
+			except AttributeError:
+				pass
+			except ET.ParseError:
+			    logging.debug("Parse Error: %s" % line)
+except KeyboardInterrupt:
+	logging.debug("Terminated by KeyboardInterrupt.")
+
